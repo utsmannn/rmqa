@@ -26,23 +26,27 @@ class MainActivity : AppCompatActivity() {
             .setAutoClearQueue(true)
             .build()
 
-        Rmqa.connect(rmqaConnection, "test-", Rmqa.TYPE.DIRECT) { senderId, jsonObject ->
-            val msg = jsonObject.getString("message")
-            text_result.append(msg + "\n")
+
+        btn_test.isEnabled = false
+
+        btn_my_queue.setOnClickListener {
+            val myQueue = input_my_queue.text.toString()
+
+            btn_test.isEnabled = true
+
+            Rmqa.connect(rmqaConnection, myQueue, Rmqa.TYPE.DIRECT) { senderId, jsonObject ->
+                val msg = jsonObject.getString("message")
+                text_result.append(msg + "\n")
+            }
         }
 
-        /*Rmqa.connect(rmqaConnection, "test-s-aaa") { senderId, jsonObject ->
-            val msg = jsonObject.getString("message")
-            text_result.append("$msg\n $senderId")
-        }*/
 
         btn_test.setOnClickListener {
             val json = JSONObject()
-            json.put("message", "this message body")
+            json.put("message", "this message body from ${input_my_queue.text} in --> ${System.currentTimeMillis()}")
 
-            //Rmqa.publish("mantan.test", "mantan", json)
-
-            Rmqa.publishTo("mantan-2", "mantan", json)
+            val toQueue = input_to_queue.text.toString()
+            Rmqa.publishTo(toQueue, "id-is-${input_my_queue.text}", json)
         }
     }
 

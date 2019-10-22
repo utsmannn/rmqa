@@ -100,7 +100,9 @@ public class RmqaConnection {
         }
     }
 
-    void connect(final String queueName, final String type, final ConnectionListener connectionListener) {
+    void connect(final String queueName,
+                 final String type,
+                 final ConnectionListener connectionListener) {
         final String exName = builder.context.getPackageName() + "." + builder.exchangeName;
         Disposable disposable = Observable.just(rmqaApp)
                 .subscribeOn(Schedulers.io())
@@ -176,7 +178,6 @@ public class RmqaConnection {
 
         compositeDisposable.add(disposable);
     }
-
 
     @Subscribe
     public void publish(final PublishEvent publishEvent) {

@@ -1,7 +1,5 @@
 package com.utsman.rmqa;
 
-import android.util.Log;
-
 import com.utsman.rmqa.event.PublishEvent;
 import com.utsman.rmqa.event.PublishSingleEvent;
 import com.utsman.rmqa.listener.ConnectionListener;
@@ -39,24 +37,12 @@ public class Rmqa {
 
     public static void publish(String exchangeName, String senderId, JSONObject jsonObject) {
         PublishEvent publishEvent = new PublishEvent(exchangeName, senderId, jsonObject);
-        boolean hasObserver = EventBus.getDefault().hasSubscriberForEvent(publishEvent.getClass());
-
-        if (hasObserver) {
-            EventBus.getDefault().post(publishEvent);
-        } else  {
-            Log.e("anjay", "publish error: no subscriber or connection");
-        }
+        EventBus.getDefault().post(publishEvent);
     }
 
     public static void publishTo(String queueName, String senderId, JSONObject jsonObject) {
         PublishSingleEvent singleEvent = new PublishSingleEvent(queueName, senderId, jsonObject);
-        boolean hasObserver = EventBus.getDefault().hasSubscriberForEvent(singleEvent.getClass());
-
-        if (hasObserver) {
-            EventBus.getDefault().post(singleEvent);
-        } else {
-            Log.e("anjay", "publish error: no subscriber or connection");
-        }
+        EventBus.getDefault().post(singleEvent);
     }
 
     public static void disconnect(RmqaConnection rmqaConnection) {

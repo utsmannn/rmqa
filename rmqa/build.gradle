@@ -6,13 +6,13 @@ apply plugin: 'com.github.dcendents.android-maven'
 
 ext {
     bintrayRepo = "utsman"
-    bintrayName = "com.utsman.messaging"
+    bintrayName = "com.utsman.rmqa"
 
     libraryName = 'rmqa'
 
-    publishedGroupId = 'com.utsman.messaging'
+    publishedGroupId = 'com.utsman.rmqa'
     artifact = 'rmqa'
-    libraryVersion = '0.0.1'
+    libraryVersion = '0.0.2'
 
     libraryDescription = 'Simple Messaging for android'
     siteUrl = 'https://github.com/utsmannn/rmqa'
@@ -34,7 +34,7 @@ android {
         minSdkVersion 16
         targetSdkVersion 29
         versionCode 1
-        versionName "0.0.1"
+        versionName "0.0.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles 'consumer-rules.pro'

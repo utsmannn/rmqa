@@ -72,7 +72,7 @@ class RmqaApp {
                     public void accept(Connection connection) throws Exception {
                         channel = connection.createChannel();
                         channel.exchangeDeclare(exchangeName, type, true);
-                        channel.basicQos(2);
+                        channel.basicQos(1);
                         channel.queueDeclare(queueName, true, clear, false, null);
 
                         channel.queueBind(queueName, exchangeName, routingKey);
@@ -151,8 +151,6 @@ class RmqaApp {
 
                     Log.i("anjay", "Msg Deliver --> " + new String(body));
 
-                    channel.basicGet(queueName, false);
-
                     try {
                         JSONObject jsonObject = new JSONObject(new String(body));
                         String senderId = jsonObject.getString("sender_id");
@@ -171,6 +169,11 @@ class RmqaApp {
                 public void handleConsumeOk(String consumerTag) {
                     super.handleConsumeOk(consumerTag);
                     Log.i("anjay", "Consume ready");
+                    try {
+                        channel.basicGet(queueName, true);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
                 }
 
@@ -232,17 +235,5 @@ class RmqaApp {
                     }
                 })
                 .dispose();
-
-        /*compositeDisposable.add(disposable);
-
-        try {
-            connection.close();
-            channel.close();
-            compositeDisposable.dispose();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
-        }*/
     }
 }
