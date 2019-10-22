@@ -1,2 +1,2 @@
-include ':app-chat', ':rmqa'
+include ':app-chat', ':rmqa', ':app-sample'
 rootProject.name='Sample RabbitMqa'

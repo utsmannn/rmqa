@@ -1,194 +1,229 @@
 package com.utsman.rmqa;
 
+import android.content.Context;
 import android.util.Log;
 
-import com.rabbitmq.client.AMQP;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.DefaultConsumer;
-import com.rabbitmq.client.Envelope;
-import com.rabbitmq.client.ShutdownSignalException;
+import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 
+import com.utsman.rmqa.event.PublishEvent;
+import com.utsman.rmqa.event.PublishSingleEvent;
+import com.utsman.rmqa.listener.ConnectionListener;
+import com.utsman.rmqa.listener.DeliveryListener;
+import com.utsman.rmqa.listener.DeliveryListenerRaw;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.util.concurrent.TimeoutException;
-
 import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
+import io.reactivex.schedulers.Schedulers;
+import kotlinx.android.parcel.Parcelize;
 
-class RmqaConnection {
+@Parcelize
+public class RmqaConnection {
 
-    private Connection connection;
-    private Channel channel;
+    Builder builder;
     private CompositeDisposable compositeDisposable = new CompositeDisposable();
+    private RmqaApp rmqaApp = new RmqaApp();
+    private MutableLiveData<JSONObject> mutableLiveData = new MutableLiveData<>();
 
-    RmqaConnection() {
+    private RmqaConnection(Builder builder) {
+        this.builder = builder;
     }
 
-    void connect(final String connectionName, final String exchangeName, final String queueName, final String url, final String routingKey, final boolean clear) {
-        final ConnectionFactory factory = new ConnectionFactory();
+    public static class Builder {
+        private String url;
+        private String server;
+        private String username;
+        private String password;
+        private String vhost;
+        private String connectionName;
+        private String exchangeName;
+        private String routingKey;
+        private boolean clear = false;
 
-        try {
-            factory.setUri(url);
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (KeyManagementException e) {
-            e.printStackTrace();
-        }
-        factory.setAutomaticRecoveryEnabled(true);
+        private Context context;
 
-        try {
-            connection = factory.newConnection(connectionName);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
+        public Builder(Context context) {
+            this.context = context;
         }
 
-        Disposable connectionDisposable = Observable.just(connection)
-                .doOnNext(new Consumer<Connection>() {
-                    @Override
-                    public void accept(Connection connection) throws Exception {
-                        channel = connection.createChannel();
-                        channel.exchangeDeclare(exchangeName, "fanout", true);
-                        channel.basicQos(2);
-                        channel.queueDeclare(queueName, true, clear, false, null);
+        public Builder setServer(String server) {
+            this.server = server;
+            return this;
+        }
 
-                        channel.queueBind(queueName, exchangeName, routingKey);
+        public Builder setUsername(String username) {
+            this.username = username;
+            return this;
+        }
+
+        public Builder setPassword(String password) {
+            this.password = password;
+            return this;
+        }
+
+        public Builder setVhost(String vhost) {
+            this.vhost = vhost;
+            return this;
+        }
+
+        public Builder setConnectionName(String connectionName) {
+            this.connectionName = connectionName;
+            return this;
+        }
+
+        public Builder setExchangeName(String exchangeName) {
+            this.exchangeName = exchangeName;
+            return this;
+        }
+
+        public Builder setRoutingKey(String routingKey) {
+            this.routingKey = routingKey;
+            return this;
+        }
+
+        public Builder setAutoClearQueue(boolean clear) {
+            this.clear = clear;
+            return this;
+        }
+
+        public RmqaConnection build() {
+            url = "amqp://" + username + ":" + password + "@" + server + "/" + vhost;
+            return new RmqaConnection(this);
+        }
+    }
+
+    void connect(final String queueName, final String type, final ConnectionListener connectionListener) {
+        final String exName = builder.context.getPackageName() + "." + builder.exchangeName;
+        Disposable disposable = Observable.just(rmqaApp)
+                .subscribeOn(Schedulers.io())
+                .doOnNext(new Consumer<RmqaApp>() {
+                    @Override
+                    public void accept(RmqaApp rabbitConnection) {
+                        rabbitConnection.connect(
+                                builder.connectionName,
+                                exName,
+                                queueName,
+                                builder.url,
+                                builder.routingKey,
+                                builder.clear,
+                                type);
                     }
                 })
-                .doOnComplete(new Action() {
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Consumer<RmqaApp>() {
                     @Override
-                    public void run() throws Exception {
+                    public void accept(RmqaApp rabbitConnection) throws Exception {
+                        connectionListener.onConnected();
+                    }
+                }, new Consumer<Throwable>() {
+                    @Override
+                    public void accept(Throwable throwable) throws Exception {
+                        Log.e("anjay", "connect fail");
+                    }
+                });
 
+        compositeDisposable.add(disposable);
+
+    }
+
+    void subscribe(final String queueName, final DeliveryListener listener) {
+        Disposable disposable = Observable.just(rmqaApp)
+                .subscribeOn(Schedulers.newThread())
+                .doOnNext(new Consumer<RmqaApp>() {
+                    @Override
+                    public void accept(RmqaApp rabbitConnection) {
+
+                        rabbitConnection.subscribe(queueName, new DeliveryListenerRaw() {
+                            @Override
+                            public void onRawJson(JSONObject jsonObject) {
+                                mutableLiveData.postValue(jsonObject);
+                            }
+                        });
                     }
                 })
-                .subscribe(new Consumer<Connection>() {
+                .subscribe(new Consumer<RmqaApp>() {
                     @Override
-                    public void accept(Connection connection) throws Exception {
-                        Log.i("anjay", "Channel ready");
+                    public void accept(RmqaApp rabbitConnection) throws Exception {
 
                     }
                 }, new Consumer<Throwable>() {
                     @Override
                     public void accept(Throwable throwable) throws Exception {
-                        throwable.printStackTrace();
-                        Log.e("anjay", "connection fail " + throwable.getLocalizedMessage());
+
                     }
                 });
 
-        compositeDisposable.add(connectionDisposable);
+        mutableLiveData.observeForever(new Observer<JSONObject>() {
+            @Override
+            public void onChanged(JSONObject jsonObject) {
+                try {
+                    String senderId = jsonObject.getString("sender_id");
+                    JSONObject data = jsonObject.getJSONObject("body");
+                    listener.onDelivery(senderId, data);
+                } catch (JSONException e) {
+                    Log.e("anjay", "Failed parsing json");
+                }
+            }
+        });
+
+        compositeDisposable.add(disposable);
     }
 
-    void publish(String routingKey, String exchangeName, JSONObject jsonObject, String senderId) {
 
-        try {
-            JSONObject data = new JSONObject();
-            data.put("sender_id", senderId);
-            data.put("body", jsonObject);
-
-            final byte[] body = String.valueOf(data).getBytes();
-
-            AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
-                    .type("text/plain")
-                    .priority(1)
-                    .build();
-            channel.basicPublish(exchangeName, routingKey, properties, body);
-            Log.i("anjay", "publish: try publish --> " + jsonObject.toString());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-    }
-
-    void subscribe(final String queueName, final DeliveryListenerRaw listener) {
-        try {
-            channel.basicConsume(queueName, false, "tag_of_"+queueName, new DefaultConsumer(channel) {
-                @Override
-                public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body) throws IOException {
-                    super.handleDelivery(consumerTag, envelope, properties, body);
-                    String routingKey = envelope.getRoutingKey();
-                    long deliveryTag = envelope.getDeliveryTag();
-
-                    Log.i("anjay", "Msg Deliver --> " + new String(body));
-
-                    channel.basicGet(queueName, false);
-
-                    try {
-                        JSONObject jsonObject = new JSONObject(new String(body));
-                        String senderId = jsonObject.getString("sender_id");
-
-                        Log.i("anjay", "Msg Deliver, routing key --> " + routingKey + " from --> " + senderId);
-                        listener.onRawJson(jsonObject);
-
-                    } catch (JSONException e) {
-                        e.printStackTrace();
+    @Subscribe
+    public void publish(final PublishEvent publishEvent) {
+        final String exName = builder.context.getPackageName() + "." + publishEvent.exchangeName;
+        Disposable disposable = Observable.just(rmqaApp)
+                .subscribeOn(Schedulers.io())
+                .doOnNext(new Consumer<RmqaApp>() {
+                    @Override
+                    public void accept(RmqaApp rabbitConnection) {
+                        rmqaApp.publish(builder.routingKey, exName, publishEvent.jsonData, publishEvent.senderId);
                     }
+                })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe();
 
-                    channel.basicAck(deliveryTag, false);
-                }
+        compositeDisposable.add(disposable);
+    }
 
-                @Override
-                public void handleConsumeOk(String consumerTag) {
-                    super.handleConsumeOk(consumerTag);
-                    Log.i("anjay", "Consume ready");
+    @Subscribe
+    public void publish(final PublishSingleEvent singleEvent) {
+        Disposable disposable = Observable.just(rmqaApp)
+                .subscribeOn(Schedulers.io())
+                .doOnNext(new Consumer<RmqaApp>() {
+                    @Override
+                    public void accept(RmqaApp rmqaConnection) throws Exception {
+                        rmqaApp.publishTo(singleEvent.queueName, singleEvent.jsonData, singleEvent.senderId);
+                    }
+                })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe();
 
-                }
+        compositeDisposable.add(disposable);
+    }
 
-                @Override
-                public void handleShutdownSignal(String consumerTag, ShutdownSignalException sig) {
-                    super.handleShutdownSignal(consumerTag, sig);
-                    //sig.fillInStackTrace();
-                    Log.i("anjay", "Shutdown signal");
-                }
+    void registerPublisher() {
+        boolean registered = EventBus.getDefault().isRegistered(this);
 
-
-                @Override
-                public void handleRecoverOk(String consumerTag) {
-                    super.handleRecoverOk(consumerTag);
-                    Log.i("anjay", "Recover Ok");
-                }
-
-                @Override
-                public void handleCancel(String consumerTag) throws IOException {
-                    super.handleCancel(consumerTag);
-                    Log.i("anjay", "Cancel");
-                }
-
-                @Override
-                public void handleCancelOk(String consumerTag) {
-                    super.handleCancelOk(consumerTag);
-                    Log.i("anjay", "Cancel Ok");
-                }
-
-            });
-
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (!registered) {
+            EventBus.getDefault().register(this);
+        } else  {
+            Log.i("anjay", "Publisher has registerd");
         }
     }
 
     void disconnect() {
-        try {
-            connection.close();
-            channel.close();
-            compositeDisposable.dispose();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
-        }
+        compositeDisposable.dispose();
+        rmqaApp.disconnect();
+        EventBus.getDefault().unregister(this);
     }
 }

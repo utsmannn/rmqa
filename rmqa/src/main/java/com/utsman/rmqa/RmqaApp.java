@@ -1,210 +1,248 @@
 package com.utsman.rmqa;
 
-import android.content.Context;
 import android.util.Log;
 
-import androidx.lifecycle.MutableLiveData;
-import androidx.lifecycle.Observer;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.DefaultConsumer;
+import com.rabbitmq.client.Envelope;
+import com.rabbitmq.client.ShutdownSignalException;
+import com.utsman.rmqa.listener.DeliveryListenerRaw;
 
-import com.utsman.rmqa.event.PublishEvent;
-import com.utsman.rmqa.listener.ConnectionListener;
-import com.utsman.rmqa.listener.DeliveryListener;
-
-import org.greenrobot.eventbus.EventBus;
-import org.greenrobot.eventbus.Subscribe;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.TimeoutException;
 
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
 import io.reactivex.schedulers.Schedulers;
-import kotlinx.android.parcel.Parcelize;
 
-@Parcelize
-public class RmqaApp {
+class RmqaApp {
 
-    Builder builder;
+    private Connection connection;
+    private Channel channel;
     private CompositeDisposable compositeDisposable = new CompositeDisposable();
-    private RmqaConnection connection = new RmqaConnection();
-    private MutableLiveData<JSONObject> mutableLiveData = new MutableLiveData<>();
 
-    private RmqaApp(Builder builder) {
-        this.builder = builder;
+    RmqaApp() {
     }
 
-    public static class Builder {
-        private String url;
-        private String server;
-        private String username;
-        private String password;
-        private String vhost;
-        private String connectionName;
-        private String exchangeName;
-        private String routingKey;
-        private boolean clear = false;
+    void connect(final String connectionName,
+                 final String exchangeName,
+                 final String queueName,
+                 final String url,
+                 final String routingKey,
+                 final boolean clear,
+                 final String type) {
 
-        private Context context;
+        final ConnectionFactory factory = new ConnectionFactory();
 
-        public Builder(Context context) {
-            this.context = context;
+        try {
+            factory.setUri(url);
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
+        }
+        factory.setAutomaticRecoveryEnabled(true);
+
+        try {
+            connection = factory.newConnection(connectionName);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
         }
 
-        public Builder setServer(String server) {
-            this.server = server;
-            return this;
-        }
-
-        public Builder setUsername(String username) {
-            this.username = username;
-            return this;
-        }
-
-        public Builder setPassword(String password) {
-            this.password = password;
-            return this;
-        }
-
-        public Builder setVhost(String vhost) {
-            this.vhost = vhost;
-            return this;
-        }
-
-        public Builder setConnectionName(String connectionName) {
-            this.connectionName = connectionName;
-            return this;
-        }
-
-        public Builder setExchangeName(String exchangeName) {
-            this.exchangeName = exchangeName;
-            return this;
-        }
-
-        public Builder setRoutingKey(String routingKey) {
-            this.routingKey = routingKey;
-            return this;
-        }
-
-        public Builder setAutoClearQueue(boolean clear) {
-            this.clear = clear;
-            return this;
-        }
-
-        public RmqaApp build() {
-            url = "amqp://" + username + ":" + password + "@" + server + "/" + vhost;
-            return new RmqaApp(this);
-        }
-    }
-
-    void connect(final String queueName, final ConnectionListener connectionListener) {
-        final String exName = builder.context.getPackageName() + "." + builder.exchangeName;
-        Disposable disposable = Observable.just(connection)
-                .subscribeOn(Schedulers.io())
-                .doOnNext(new Consumer<RmqaConnection>() {
+        Disposable connectionDisposable = Observable.just(connection)
+                .doOnNext(new Consumer<Connection>() {
                     @Override
-                    public void accept(RmqaConnection rabbitConnection) {
-                        rabbitConnection.connect(
-                                builder.connectionName,
-                                exName,
-                                queueName,
-                                builder.url,
-                                builder.routingKey,
-                                builder.clear);
+                    public void accept(Connection connection) throws Exception {
+                        channel = connection.createChannel();
+                        channel.exchangeDeclare(exchangeName, type, true);
+                        channel.basicQos(2);
+                        channel.queueDeclare(queueName, true, clear, false, null);
+
+                        channel.queueBind(queueName, exchangeName, routingKey);
                     }
                 })
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new Consumer<RmqaConnection>() {
+                .doOnComplete(new Action() {
                     @Override
-                    public void accept(RmqaConnection rabbitConnection) throws Exception {
-                        connectionListener.onConnected();
-                    }
-                }, new Consumer<Throwable>() {
-                    @Override
-                    public void accept(Throwable throwable) throws Exception {
-                        Log.e("anjay", "connect fail");
-                    }
-                });
+                    public void run() throws Exception {
 
-        compositeDisposable.add(disposable);
-
-    }
-
-    void subscribe(final String queueName, final DeliveryListener listener) {
-        Disposable disposable = Observable.just(connection)
-                .subscribeOn(Schedulers.newThread())
-                .doOnNext(new Consumer<RmqaConnection>() {
-                    @Override
-                    public void accept(RmqaConnection rabbitConnection) {
-
-                        rabbitConnection.subscribe(queueName, new DeliveryListenerRaw() {
-                            @Override
-                            public void onRawJson(JSONObject jsonObject) {
-                                mutableLiveData.postValue(jsonObject);
-                            }
-                        });
                     }
                 })
-                .subscribe(new Consumer<RmqaConnection>() {
+                .subscribe(new Consumer<Connection>() {
                     @Override
-                    public void accept(RmqaConnection rabbitConnection) throws Exception {
+                    public void accept(Connection connection) throws Exception {
+                        Log.i("anjay", "Channel ready");
 
                     }
                 }, new Consumer<Throwable>() {
                     @Override
                     public void accept(Throwable throwable) throws Exception {
-
+                        throwable.printStackTrace();
+                        Log.e("anjay", "connection fail " + throwable.getLocalizedMessage());
                     }
                 });
 
-        mutableLiveData.observeForever(new Observer<JSONObject>() {
-            @Override
-            public void onChanged(JSONObject jsonObject) {
-                try {
-                    String senderId = jsonObject.getString("sender_id");
-                    JSONObject data = jsonObject.getJSONObject("body");
-                    listener.onDelivery(senderId, data);
-                } catch (JSONException e) {
-                    Log.e("anjay", "Failed parsing json");
+        compositeDisposable.add(connectionDisposable);
+    }
+
+    void publish(String routingKey, String exchangeName, JSONObject jsonObject, String senderId) {
+
+        try {
+            JSONObject data = new JSONObject();
+            data.put("sender_id", senderId);
+            data.put("body", jsonObject);
+
+            final byte[] body = String.valueOf(data).getBytes();
+
+            AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
+                    .type("text/plain")
+                    .priority(1)
+                    .build();
+
+            channel.basicPublish(exchangeName, routingKey, properties, body);
+            Log.i("anjay", "publish: try publish --> " + jsonObject.toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void publishTo(String queueName, JSONObject jsonObject, String senderId) {
+        try {
+            JSONObject data = new JSONObject();
+            data.put("sender_id", senderId);
+            data.put("body", jsonObject);
+
+            final byte[] body = String.valueOf(data).getBytes();
+
+            channel.basicPublish("", queueName, false, false, null, body);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void subscribe(final String queueName, final DeliveryListenerRaw listener) {
+        try {
+            channel.basicConsume(queueName, false, "tag_of_"+queueName, new DefaultConsumer(channel) {
+                @Override
+                public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body) throws IOException {
+                    super.handleDelivery(consumerTag, envelope, properties, body);
+                    String routingKey = envelope.getRoutingKey();
+                    long deliveryTag = envelope.getDeliveryTag();
+
+                    Log.i("anjay", "Msg Deliver --> " + new String(body));
+
+                    channel.basicGet(queueName, false);
+
+                    try {
+                        JSONObject jsonObject = new JSONObject(new String(body));
+                        String senderId = jsonObject.getString("sender_id");
+
+                        Log.i("anjay", "Msg Deliver, routing key --> " + routingKey + " from --> " + senderId);
+                        listener.onRawJson(jsonObject);
+
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+
+                    channel.basicAck(deliveryTag, false);
                 }
-            }
-        });
 
-        compositeDisposable.add(disposable);
-    }
+                @Override
+                public void handleConsumeOk(String consumerTag) {
+                    super.handleConsumeOk(consumerTag);
+                    Log.i("anjay", "Consume ready");
+
+                }
+
+                @Override
+                public void handleShutdownSignal(String consumerTag, ShutdownSignalException sig) {
+                    super.handleShutdownSignal(consumerTag, sig);
+                    //sig.fillInStackTrace();
+                    Log.i("anjay", "Shutdown signal");
+                }
 
 
-    @Subscribe
-    public void publish(final PublishEvent publishEvent) {
-        final String exName = builder.context.getPackageName() + "." + publishEvent.exchangeName;
-        Disposable disposable = Observable.just(connection)
-                .subscribeOn(Schedulers.io())
-                .doOnNext(new Consumer<RmqaConnection>() {
-                    @Override
-                    public void accept(RmqaConnection rabbitConnection) {
-                        connection.publish(builder.routingKey, exName, publishEvent.jsonData, publishEvent.senderId);
-                    }
-                })
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe();
+                @Override
+                public void handleRecoverOk(String consumerTag) {
+                    super.handleRecoverOk(consumerTag);
+                    Log.i("anjay", "Recover Ok");
+                }
 
-        compositeDisposable.add(disposable);
-    }
+                @Override
+                public void handleCancel(String consumerTag) throws IOException {
+                    super.handleCancel(consumerTag);
+                    Log.i("anjay", "Cancel");
+                }
 
-    void registerPublisher() {
-        boolean registered = EventBus.getDefault().isRegistered(this);
+                @Override
+                public void handleCancelOk(String consumerTag) {
+                    super.handleCancelOk(consumerTag);
+                    Log.i("anjay", "Cancel Ok");
+                }
 
-        if (!registered) {
-            EventBus.getDefault().register(this);
-        } else  {
-            Log.i("anjay", "Publisher has registerd");
+            });
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
     void disconnect() {
-        compositeDisposable.dispose();
-        connection.disconnect();
-        EventBus.getDefault().unregister(this);
+        Observable.just(connection)
+                .subscribeOn(Schedulers.io())
+                .doOnNext(new Consumer<Connection>() {
+                    @Override
+                    public void accept(Connection connection) throws Exception {
+                        connection.close();
+                        channel.close();
+                    }
+                })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Consumer<Connection>() {
+                    @Override
+                    public void accept(Connection connection) throws Exception {
+                        Log.i("anjay", "connection close Ok");
+                        compositeDisposable.dispose();
+                    }
+                }, new Consumer<Throwable>() {
+                    @Override
+                    public void accept(Throwable throwable) throws Exception {
+                        Log.e("anjay", "connection close failed");
+                        compositeDisposable.dispose();
+                    }
+                })
+                .dispose();
+
+        /*compositeDisposable.add(disposable);
+
+        try {
+            connection.close();
+            channel.close();
+            compositeDisposable.dispose();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }*/
     }
 }
