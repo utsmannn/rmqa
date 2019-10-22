@@ -1,0 +1,2 @@
+include ':app-chat', ':rmqa'
+rootProject.name='Sample RabbitMqa'
