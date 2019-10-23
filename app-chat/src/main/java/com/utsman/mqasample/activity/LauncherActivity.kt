@@ -1,9 +1,13 @@
-package com.utsman.mqasample
+package com.utsman.mqasample.activity
 
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import androidx.appcompat.app.AppCompatActivity
+import com.utsman.mqasample.R
+import com.utsman.mqasample.service.ChatService
+import com.utsman.mqasample.util.ProgressHelper
+import com.utsman.mqasample.util.saveUserPref
 import kotlinx.android.synthetic.main.activity_launcher.*
 
 class LauncherActivity : AppCompatActivity() {

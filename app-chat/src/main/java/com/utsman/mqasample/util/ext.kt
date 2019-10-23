@@ -1,13 +1,13 @@
 @file:Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
 
-package com.utsman.mqasample
+package com.utsman.mqasample.util
 
 import android.app.ProgressDialog
 import android.content.Context
 import android.util.Log
 
-fun logi(msg: String?) = Log.i("rmqa-sample", msg)
-fun loge(msg: String?) = Log.e("rmqa-sample", msg)
+fun logi(msg: String?) = Log.i("chat-sample", msg)
+fun loge(msg: String?) = Log.e("chat-sample", msg)
 
 fun Context.saveUserPref(username: String) {
     getSharedPreferences("chat", Context.MODE_PRIVATE).edit().putString("user", username).apply()

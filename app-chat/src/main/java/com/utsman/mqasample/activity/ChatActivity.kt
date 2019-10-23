@@ -1,15 +1,17 @@
-package com.utsman.mqasample
+package com.utsman.mqasample.activity
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.utsman.mqasample.R
+import com.utsman.mqasample.adapter.ChatAdapter
+import com.utsman.mqasample.model.Chat
+import com.utsman.mqasample.util.getUserPref
+import com.utsman.mqasample.util.logi
 import com.utsman.rmqa.Rmqa
 import kotlinx.android.synthetic.main.activity_chat.*
 import org.json.JSONObject
@@ -35,16 +37,9 @@ class ChatActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat)
-        createNotificationChannel()
-        val intentFilter = IntentFilter()
-        intentFilter.addAction("message_coming")
-        registerReceiver(receiverChat, intentFilter)
 
-        chatAdapter = ChatAdapter(this, chats)
-        val layoutManager = LinearLayoutManager(this)
-        layoutManager.stackFromEnd = true
-        main_chat_list.layoutManager = layoutManager
-        main_chat_list.adapter = chatAdapter
+        setupRegisterBroadcastReceiver()
+        setupRecyclerView()
 
         val user = getUserPref()
         btn_chat_now.setOnClickListener {
@@ -59,19 +54,18 @@ class ChatActivity : AppCompatActivity() {
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "chat"
-            val descriptionText = "chat notification"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel("chat_id", name, importance).apply {
-                description = descriptionText
-            }
-            // Register the channel with the system
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
+    private fun setupRegisterBroadcastReceiver() {
+        val intentFilter = IntentFilter()
+        intentFilter.addAction("message_coming")
+        registerReceiver(receiverChat, intentFilter)
+    }
+
+    private fun setupRecyclerView() {
+        chatAdapter = ChatAdapter(this, chats)
+        val layoutManager = LinearLayoutManager(this)
+        layoutManager.stackFromEnd = true
+        main_chat_list.layoutManager = layoutManager
+        main_chat_list.adapter = chatAdapter
     }
 
     override fun onDestroy() {

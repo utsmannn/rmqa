@@ -13,7 +13,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         tools:ignore="GoogleAppIndexingWarning">
-        <activity android:name=".LauncherActivity">
+        <activity android:name=".activity.LauncherActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -21,8 +21,8 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ChatActivity"/>
-        <service android:name=".ChatService"/>
+        <activity android:name=".activity.ChatActivity"/>
+        <service android:name=".service.ChatService"/>
     </application>
 
 </manifest>
