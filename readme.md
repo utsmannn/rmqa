@@ -1,6 +1,11 @@
 # rmqa
 [ ![Download](https://api.bintray.com/packages/kucingapes/utsman/com.utsman.rmqa/images/download.svg) ](https://bintray.com/kucingapes/utsman/com.utsman.rmqa/_latestVersion)
 
+# WARNING!
+**Url dependencies is deprecated** caused bintray shutdown! Please fork for use this library.
+
+---
+
 ### Rabbit Message Queue for Android
 Implementation minimalized feature of RabbitMQ in android. Goodbye to the fcm API key.
 
